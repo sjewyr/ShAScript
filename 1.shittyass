@@ -1,10 +1,17 @@
-gay = '/api/balls/'
+gay = '12'
+balls @= '1' + '2'
 
-func SHIT (gay,balls) {
-    balls1 @= 'http://127.0.0.1:8000' + gay
-    return = balls1
+func SHIT (n,balls) {
+    if n susin balls {
+        print = 'suces'
+    }
+    else {
+        print = 'nosuces'
+    }
+    print = n
+    print = balls
+    EndShit
 }
 
-%func(gay,123)
-print = return
+%func(gay,balls)
 EndShit

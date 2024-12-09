@@ -256,13 +256,20 @@ class ExprShittyToken(ShittyToken):
             
             tree.mv()
             commands = []
-            while tree.try_token() != "}":
+            braces_opened = 1
+            while braces_opened:
                 cmd = tree.get_token()
+                if cmd == "{":
+                    braces_opened +=1
+                elif cmd == "}":
+                    braces_opened -= 1
+                    if braces_opened == 0:
+                        continue
                 for arg in args:
                     if cmd == arg:
                         cmd = "::"+arg
                 commands.append(cmd)
-            tree.mv()
+
  
             func = ShitFunc(args, commands)
             tree.add_func(lhs, func)
@@ -299,8 +306,8 @@ class ExprShittyToken(ShittyToken):
             else:
                 self.tree.vars[-2]["return"] = self.rhs
         if self.eq_sign == "susin":
-            rhs = self.rhs.get_py_value() 
-            lhs = ValueShittyToken(self.lhs, self.tree).get_py_value()
+            rhs = self.rhs.get_literal_value() 
+            lhs = ValueShittyToken(self.lhs, self.tree).get_literal_value()
             return lhs == rhs
 
 
@@ -321,7 +328,7 @@ class ShitFunc:
                     if "::" in tok:
                         arg_name = tok[2:]
                         idx = self.args.index(arg_name)
-                        _cmd.append(args[idx])
+                        _cmd.append(str(args[idx]))
                     else:
                         _cmd.append(tok)
                 res += ' '.join(_cmd)+' '
@@ -339,6 +346,8 @@ class RHS:
     def parse_self(tree: MyShit) -> ValueShittyToken:
         string = False
         val = MultBlock.parse_self(tree)
+        if isinstance(val, str):
+            string = True
         cur = tree.try_token()
         while cur == "+" or cur == "-":
             tree.mv()
