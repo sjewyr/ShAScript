@@ -16,6 +16,14 @@ class ShitSyntaxError(Exception):
 
     def __str__(self):
         return f"Syntax Error: {self.msg}"
+    
+
+class ShitRuntimeError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return f"Runtime Error: {self.msg}"
 
 
 class MyShit:
@@ -55,6 +63,7 @@ class MyShit:
                     
                     func_name, func_args = func[:-1].split("(", 1)
                     func_args = func_args.split(",")
+                    func_args = list(map(lambda x: ValueShittyToken(x,self).get_literal_value(), func_args))
                     res = self.funcs.get(func_name)
                     if not res:
                         raise ShitSyntaxError("Function undefined")
@@ -79,6 +88,30 @@ class MyShit:
                         )
                         print(f"Last scope closed with vars {vars}")
                     return
+                if self.try_token() == "else":
+                    try:
+                        while self.get_token() != "}":
+                            pass
+                    except IndexError:
+                        raise ShitRuntimeError("Else stmt not closed")
+                    continue
+                
+                if self.try_token() == "if":
+                    self.mv()
+                    expr = ExprShittyToken.parse_self(self)
+                    if expr.interpret():
+                        continue
+                    else:
+                        try:
+                            while self.get_token() != "}":
+                                pass
+                            if self.try_token() == "else":
+                                self.mv()
+                                continue
+
+                        except IndexError:
+                            raise ShitRuntimeError("If stmt not closed")
+                    continue
 
                 expr = ExprShittyToken.parse_self(self)
                 res = expr.interpret()
@@ -139,6 +172,11 @@ class ValueShittyToken(ShittyToken):
 
     def get_py_value(self):
         val = str(self.val)
+        idx = None
+        if "." in val:
+            if not val.startswith("'") and not val.endswith("'"):
+                val, idx = val.split(".")
+        
         if val.startswith("'") and val.endswith("'"):
             val = str(val[1:-1])
         elif val.isnumeric():
@@ -147,16 +185,50 @@ class ValueShittyToken(ShittyToken):
             val = self.tree.try_get_val(self.val)
             if val:
                 val = val.get_py_value()
+
+        if idx is not None:
+            try:
+                return val[int(idx)]
+            except:
+                raise ShitRuntimeError(f'Failed to get index {idx} of {val}')
         return val
+    
+    def get_literal_value(self):
+        val = str(self.val)
+        idx = None
+        if "." in val:
+            if not val.startswith("'") and val.endswith("'"):
+                val, idx = val.split(".")
+        
+        if val.startswith("'") and val.endswith("'"):
+            val = str(val)
+        elif val.isnumeric():
+            val = int(val)
+        else:
+            val = self.tree.try_get_val(self.val)
+            if val:
+                val = val.get_literal_value()
+
+        if idx is not None:
+            try:
+                return val[int(idx)]
+            except:
+                raise ShitRuntimeError(f'Failed to get index {idx} of {val}')
+        return val
+
+
+    def encode_str(self):
+        self.val = f"'+{self.val}+'"
 
     def __str__(self):
         return f"Value: {self.val}"
 
 
 class ExprShittyToken(ShittyToken):
-    def __init__(self, lhs, rhs, tree: MyShit):
+    def __init__(self, lhs, rhs, eq_sign, tree: MyShit):
         self.lhs = lhs
         self.rhs = rhs
+        self.eq_sign = eq_sign
         self.tree = tree
 
     @staticmethod
@@ -195,14 +267,21 @@ class ExprShittyToken(ShittyToken):
             func = ShitFunc(args, commands)
             tree.add_func(lhs, func)
             rhs = None
+        
+        elif eq_sign == "susin":
+            tree.mv()
+            rhs = RHS.parse_self(tree)
+
+
         else:
             rhs = None
-
-        if rhs:
-            tree.update_val(lhs, ValueShittyToken.copy_value(str(rhs.get_py_value()), tree))
-        else:
-            tree.update_val(lhs, None)
-        return ExprShittyToken(lhs, rhs, tree)
+        
+        if eq_sign != "susin":
+            if rhs:
+                tree.update_val(lhs, ValueShittyToken(str(rhs.get_literal_value()), tree))
+            else:
+                tree.update_val(lhs, None)
+        return ExprShittyToken(lhs, rhs, eq_sign, tree)
 
     def __str__(self):
         return f"Expr: {self.lhs}, {self.rhs}"
@@ -213,12 +292,16 @@ class ExprShittyToken(ShittyToken):
         if self.lhs == "return":
             if len(self.tree.vars) == 1:
                 if self.tree.parent:
-                    self.tree.parent.update_val("return", ValueShittyToken.copy_value(str(self.rhs.get_py_value()), self.tree.parent))
+                    self.tree.parent.update_val("return", ValueShittyToken(str(self.rhs.get_literal_value()), self.tree.parent))
                     return ('return', self.rhs.get_py_value())
                 else:
                     raise ShitSyntaxError("Чего ты сделать то пытаешься то")
             else:
                 self.tree.vars[-2]["return"] = self.rhs
+        if self.eq_sign == "susin":
+            rhs = self.rhs.get_py_value() 
+            lhs = ValueShittyToken(self.lhs, self.tree).get_py_value()
+            return lhs == rhs
 
 
 class ShitFunc:
@@ -254,29 +337,34 @@ class RHS:
 
     @staticmethod
     def parse_self(tree: MyShit) -> ValueShittyToken:
+        string = False
         val = MultBlock.parse_self(tree)
-        if not isinstance(val, int):
-            raise ShitSyntaxError("I cannot add non-numeric values")
         cur = tree.try_token()
         while cur == "+" or cur == "-":
             tree.mv()
+            if isinstance(val, str):
+                string = True
             if cur == "+":
-                val += MultBlock.parse_self(tree)
+                res = MultBlock.parse_self(tree)
+                val += res
             else:
+                if string:
+                    raise ShitRuntimeError("Cannot use '-' on string")
                 val -= MultBlock.parse_self(tree)
             cur = tree.try_token()
-        return ValueShittyToken(str(val), tree)
+        return ValueShittyToken(str(val), tree) if not string else ValueShittyToken("'" +val+ "'", tree)
 
 
 class MultBlock:
     @staticmethod
     def parse_self(tree: MyShit) -> int:
         val = ValueShittyToken.parse_self(tree).get_py_value()
-        if not isinstance(val, int):
-            raise ShitSyntaxError("I cannot multiply non-numeric values")
+        
 
         cur = tree.try_token()
         while cur == "*" or cur == "/":
+            if not isinstance(val, int):
+                raise ShitSyntaxError("I cannot multiply non-numeric values")
             tree.mv()
             _val = ValueShittyToken.parse_self(tree).get_py_value()
             if not isinstance(_val, int):

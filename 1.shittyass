@@ -1,13 +1,10 @@
-func SHIT (n,balls) {
-    print = n
-    print = balls
-    return @= n + balls
-    EndShit
+gay = '/api/balls/'
+
+func SHIT (gay,balls) {
+    balls1 @= 'http://127.0.0.1:8000' + gay
+    return = balls1
 }
 
-%func(2,4)
+%func(gay,123)
 print = return
-%func(1,10)
-print = return
-abc @= 10 / 2 + 4
 EndShit
