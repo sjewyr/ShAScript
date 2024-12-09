@@ -19,17 +19,22 @@ class ShitSyntaxError(Exception):
 
 
 class MyShit:
-    def __init__(self, shitcode: str, debug=False):
+    def __init__(self, shitcode: str, debug=False, parent: "MyShit" = None):
         self.shitcode = shitcode
         self.tokens = list(
             filter(lambda x: x != "", map(lambda x: x.strip(), shitcode.split()))
         )
+        if self.tokens.count("::") > 0:
+            raise ShitSyntaxError(":: is reserved symbol; your code cannot have it")
         self.cur = 0
         self.parsed_nodes = []
         self.debug = debug
+        self.funcs = {}
+        self.parent = parent
 
         self.vars: list[dict[str, Any]] = [dict()]
-
+    def add_func(self, name, code):
+        self.funcs[name] = code
     def append_var(self, name, val):
         self.vars[-1][name] = val
 
@@ -42,15 +47,21 @@ class MyShit:
     def parse_shit(self):
         if self.tokens.count("{") != self.tokens.count("}"):
             raise ShitSyntaxError("Scope Mismatch")
-        try:
-            while self.try_token() != "OhShit":
-                self.parsed_nodes.append(VarShittyToken.parse_self(self))
-        except IndexError:
-            raise ShitLexicError("No OhShit at the end of variable stream")
 
-        self.mv()
         try:
             while self.try_token() != "EndShit":
+                if self.try_token().startswith("%"):
+                    func = self.get_token()[1:]
+                    
+                    func_name, func_args = func[:-1].split("(", 1)
+                    func_args = func_args.split(",")
+                    res = self.funcs.get(func_name)
+                    if not res:
+                        raise ShitSyntaxError("Function undefined")
+                    
+                    new_tree = MyShit(res.expand(func_args), self.debug, self)
+                    res = new_tree.parse_shit()
+                    continue
                 if self.try_token() == "{":
                     self.vars.append(dict())
                     self.mv()
@@ -64,13 +75,16 @@ class MyShit:
                     self.mv()
                     if self.debug:
                         vars = "\n".join(
-                            f"{var[0]}: {var[1].get_py_value()}" for var in vars.items()
+                            f"{var[0]}: {var[1].get_py_value() if var[1] else None}" for var in vars.items()
                         )
                         print(f"Last scope closed with vars {vars}")
                     return
 
                 expr = ExprShittyToken.parse_self(self)
-                expr.interpret()
+                res = expr.interpret()
+                if isinstance(res, tuple):
+                    if res[0] == "return":
+                        return res[1]
 
                 self.parsed_nodes.append(expr)
         except IndexError:
@@ -114,6 +128,14 @@ class ValueShittyToken(ShittyToken):
     @staticmethod
     def parse_self(tree: MyShit):
         return ValueShittyToken(tree.get_token(), tree)
+    
+    @staticmethod
+    def copy_value(value:str, tree: MyShit):
+        if value.isnumeric():
+            return ValueShittyToken(value, tree)
+        
+        else:
+            return ValueShittyToken("'" + value + "'", tree)
 
     def get_py_value(self):
         val = str(self.val)
@@ -139,6 +161,7 @@ class ExprShittyToken(ShittyToken):
 
     @staticmethod
     def parse_self(tree: MyShit):
+        
         lhs = tree.get_token()
         eq_sign = tree.try_token()
         if eq_sign == "=":
@@ -147,11 +170,36 @@ class ExprShittyToken(ShittyToken):
         elif eq_sign == "@=":
             tree.mv()
             rhs = RHS.parse_self(tree)
+        elif eq_sign == "SHIT":
+            tree.mv()
+            arg_str = tree.try_token()
+            if not arg_str.startswith("("):
+                raise ShitSyntaxError("Function declaration does not have args")
+            args = arg_str[1:-1].split(",")
+            
+            tree.mv()
+
+            if tree.try_token() != "{":
+                raise ShitSyntaxError("Function declaration does not have braces")
+            
+            tree.mv()
+            commands = []
+            while tree.try_token() != "}":
+                cmd = tree.get_token()
+                for arg in args:
+                    if cmd == arg:
+                        cmd = "::"+arg
+                commands.append(cmd)
+            tree.mv()
+ 
+            func = ShitFunc(args, commands)
+            tree.add_func(lhs, func)
+            rhs = None
         else:
             rhs = None
 
         if rhs:
-            tree.update_val(lhs, ValueShittyToken(str(rhs.get_py_value()), tree))
+            tree.update_val(lhs, ValueShittyToken.copy_value(str(rhs.get_py_value()), tree))
         else:
             tree.update_val(lhs, None)
         return ExprShittyToken(lhs, rhs, tree)
@@ -164,9 +212,41 @@ class ExprShittyToken(ShittyToken):
             print(self.rhs.get_py_value(), sep="")
         if self.lhs == "return":
             if len(self.tree.vars) == 1:
-                raise ShitSyntaxError("Cannot return from global scope")
-            self.tree.vars[-2]["return"] = self.rhs
+                if self.tree.parent:
+                    self.tree.parent.update_val("return", ValueShittyToken.copy_value(str(self.rhs.get_py_value()), self.tree.parent))
+                    return ('return', self.rhs.get_py_value())
+                else:
+                    raise ShitSyntaxError("Чего ты сделать то пытаешься то")
+            else:
+                self.tree.vars[-2]["return"] = self.rhs
 
+
+class ShitFunc:
+    def __init__(self, args: list[str], tokens: list[str]):
+        self.args = args
+        self.tokens = tokens
+
+    def expand(self, args: list[Any]):
+        res = " "
+        if isinstance(args, (list, tuple)):
+            if len(self.args) != len(args):
+                raise ShitSyntaxError("Argument count mismatch")
+            for cmd in self.tokens:
+                tokens = cmd.split(" ")
+                _cmd = []
+                for tok in tokens:
+                    if "::" in tok:
+                        arg_name = tok[2:]
+                        idx = self.args.index(arg_name)
+                        _cmd.append(args[idx])
+                    else:
+                        _cmd.append(tok)
+                res += ' '.join(_cmd)+' '
+
+
+        
+        return res
+    
 
 class RHS:
     def __init__(self, tree):

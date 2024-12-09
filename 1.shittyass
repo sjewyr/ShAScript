@@ -1,4 +1,13 @@
-OhShit
-print = 1
-print = print
+func SHIT (n,balls) {
+    print = n
+    print = balls
+    return @= n + balls
+    EndShit
+}
+
+%func(2,4)
+print = return
+%func(1,10)
+print = return
+abc @= 10 / 2 + 4
 EndShit

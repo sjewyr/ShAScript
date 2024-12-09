@@ -48,6 +48,29 @@ EndShit
 >1  
 >1
 
+Можно делать функции, функции объявляются ключевым словом SHIT (case-sensitive),  
+вызов функции производится при помощи символа %, например,  
+
+```
+func SHIT (n,balls) {
+    print = n
+    print = balls
+    return @= n + balls
+    EndShit
+}
+
+%func(2,4)
+print = return
+%func(1,10)
+print = return
+EndShit
+```
+>2  
+>4  
+>6  
+>1  
+>10  
+>11  
 
 
 
