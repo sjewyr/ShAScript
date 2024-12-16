@@ -1,17 +1,5 @@
-gay = '12'
-balls @= '1' + '2'
-
-func SHIT (n,balls) {
-    if n susin balls {
-        print = 'suces'
-    }
-    else {
-        print = 'nosuces'
-    }
-    print = n
-    print = balls
-    EndShit
-}
-
-%func(gay,balls)
+bababoi = 1
+bababoi @= bababoi + 1
+letters = bababoi
+print @= bababoi * 2
 EndShit
